@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8">
+  <title>Untitled</title>
+  <link rel="stylesheet" href="./style.css">
+
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لعبة صيد الكنوز</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            direction: rtl;
+        }
+
+        #game-container {
+            position: relative;
+            text-align: center;
+        }
+
+        #gameCanvas {
+            background-image: url('https://i.imgur.com/FXmMj44.jpg');
+            background-size: cover;
+            border: 2px solid #000;
+        }
+
+        #score-board {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 20px;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        #startButton,
+        #adButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        #startButton:hover {
+            background-color: #45a049;
+        }
+
+        #adButton {
+            background-color: #FF5733;
+        }
+
+        #adButton:hover {
+            background-color: #e04b29;
+        }
+
+        #cooldown-message {
+            color: red;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="score-board">
+            <p>الأرواح المتبقية: <span id="lives">3</span></p>
+            <p>جمع الكنوز: <span id="collectedCoins">0</span></p>
+        </div>
+        <button id="startButton">ابدأ اللعبة</button>
+        <button id="adButton" style="display: none;">تخطي الانتظار</button>
+        <p id="cooldown-message">الرجاء الانتظار 60 دقيقة للعب مرة أخرى!</p>
+    </div>
+
+    <script>
+        // إعدادات اللعبة
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 800;
+        canvas.height = 600;
+
+        // تحميل الصور
+        const playerImage = new Image();
+        playerImage.src = 'https://i.imgur.com/W5RL74V.png'; // صورة الشخصية
+
+        const coinImage = new Image();
+        coinImage.src = 'https://i.imgur.com/qRhM0td.png'; // صورة الكنز
+
+        const dangerCoinImage = new Image();
+        dangerCoinImage.src = 'https://i.imgur.com/3oEythm.png'; // صورة الكنز الخطير
+
+        // اللاعب
+        const player = {
+            x: 400,
+            y: 500,
+            width: 50,
+            height: 50,
+            speed: 5,
+            dx: 0,
+            dy: 0
+        };
+
+        // المتغيرات العامة
+        const treasures = [];
+        const treasureSize = 30;
+        let collectedCoins = 0;
+        let lives = 3;
+        let isCooldown = false;
+        let cooldownEndTime = 0;
+        let gameStarted = false;
+
+        // إنشاء الكنز
+        function generateTreasure() {
+            const isDanger = Math.random() < 0.3; // 30% فرصة أن يكون الكنز خطير
+            treasures.push({
+                x: Math.random() * (canvas.width - treasureSize),
+                y: -treasureSize,
+                width: treasureSize,
+                height: treasureSize,
+                isDanger: isDanger,
+                collected: false
+            });
+        }
+
+        // تحديث موقع اللاعب
+        function movePlayer() {
+            player.x += player.dx;
+            player.y += player.dy;
+
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+            if (player.y < 0) player.y = 0;
+            if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
+        }
+
+        // رسم اللاعب
+        function drawPlayer() {
+            ctx.drawImage(playerImage, player.x, player.y, player.width, player.height);
+        }
+
+        // رسم الكنوز
+        function drawTreasures() {
+            treasures.forEach(treasure => {
+                const img = treasure.isDanger ? dangerCoinImage : coinImage;
+                if (!treasure.collected) {
+                    ctx.drawImage(img, treasure.x, treasure.y, treasure.width, treasure.height);
+                }
+            });
+        }
+
+        // تحديث سقوط الكنوز
+        function updateTreasures() {
+            treasures.forEach(treasure => {
+                if (!treasure.collected) {
+                    treasure.y += 2; // سرعة السقوط
+                    if (treasure.y > canvas.height) {
+                        treasure.y = -treasureSize; // إعادة الكنز للأعلى
+                        treasure.x = Math.random() * (canvas.width - treasureSize);
+                    }
+                }
+            });
+        }
+
+        // التحقق من الاصطدامات
+        function checkCollisions() {
+            treasures.forEach(treasure => {
+                if (
+                    !treasure.collected &&
+                    player.x < treasure.x + treasure.width &&
+                    player.x + player.width > treasure.x &&
+                    player.y < treasure.y + treasure.height &&
+                    player.y + player.height > treasure.y
+                ) {
+                    treasure.collected = true;
+                    if (treasure.isDanger) {
+                        lives--;
+                        document.getElementById('lives').textContent = lives;
+                        if (lives <= 0) {
+                            isCooldown = true;
+                            cooldownEndTime = Date.now() + 60 * 60 * 1000; // 60 دقيقة
+                            document.getElementById('cooldown-message').style.display = 'block';
+                            document.getElementById('adButton').style.display = 'inline';
+                        }
+                    } else {
+                        collectedCoins += 100; // قيمة الكنز العادي
+                        document.getElementById('collectedCoins').textContent = collectedCoins;
+                    }
+                }
+            });
+        }
+
+        // التعامل مع المدخلات
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowUp') player.dy = -player.speed;
+            if (e.key === 'ArrowDown') player.dy = player.speed;
+            if (e.key === 'ArrowLeft') player.dx = -player.speed;
+            if (e.key === 'ArrowRight') player.dx = player.speed;
+        });
+
+        document.addEventListener('keyup', function (e) {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') player.dy = 0;
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') player.dx = 0;
+        });
+
+        // التحقق من العد التنازلي
+        function checkCooldown() {
+            if (isCooldown) {
+                const currentTime = Date.now();
+                if (currentTime >= cooldownEndTime) {
+                    isCooldown = false;
+                    document.getElementById('cooldown-message').style.display = 'none';
+                    document.getElementById('adButton').style.display = 'none';
+                    lives = 3;
+                    document.getElementById('lives').textContent = lives;
+                }
+            }
+        }
+
+        // زر الإعلانات
+        document.getElementById('adButton').addEventListener('click', function () {
+            // فتح رابط الإعلان في نافذة جديدة
+            const adUrl = 'https://youtube.com/@crypto_bots3';  // استبدل هذا الرابط برابط الإعلان الخاص بك
+            window.open(adUrl, '_blank');  // فتح الإعلان في نافذة جديدة
+
+            // بعد زيارة الإعلان، يمكن للمستخدم تخطي وقت الانتظار
+            isCooldown = false;
+            document.getElementById('cooldown-message').style.display = 'none';
+            document.getElementById('adButton').style.display = 'none';
+            lives = 3;
+            document.getElementById('lives').textContent = lives;
+        });
+
+        // بدء اللعبة
+        document.getElementById('startButton').addEventListener('click', function () {
+            if (gameStarted) return;
+            gameStarted = true;
+            document.getElementById('startButton').style.display = 'none';
+            setInterval(generateTreasure, 1000); // إنشاء كنز جديد كل ثانية
+            updateGame();
+        });
+
+        // تحديث اللعبة
+        function updateGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (!isCooldown) {
+                movePlayer();
+                drawPlayer();
+                drawTreasures();
+                updateTreasures();
+                checkCollisions();
+            }
+
+            checkCooldown();
+            requestAnimationFrame(updateGame);
+        }
+    </script>
+</body>
+</html>
+<!-- partial -->
+  <script  src="./script.js"></script>
+
+</body>
+</html>
